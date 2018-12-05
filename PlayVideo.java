@@ -1,9 +1,12 @@
+package application;
+
 import java.util.*;
 import java.awt.*;
 import java.awt.image.*;
 import java.io.*;
 import javax.swing.*;
 import java.lang.Math.*;
+//import java.lang.*;
 import java.util.concurrent.*;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -18,14 +21,11 @@ import java.io.FileReader;
 import java.util.Iterator; 
 import java.util.Map;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.BufferedInputStream;
-
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
+  
 
 public class PlayVideo {
 
@@ -37,36 +37,38 @@ public class PlayVideo {
 	private byte[][] green = new byte[HEIGHT][WIDTH];
 	private byte[][] blue = new byte[HEIGHT][WIDTH];
 
+	private BufferedImage[] video = new BufferedImage[MAX_FRAME];
 	private int frameNumber;
+	private ArrayList<Integer> BBoxindex;
+	private int mX;
+	private int mY;
+	private boolean mclick; 
 	private JLabel lbIm1;
-	private JLabel frameNumLbl;
 	private JFrame frame;
 	private GridBagConstraints c;
 	static String folderName = null;
 	private File file;
 	static PlayVideo ren;
 	private ScheduledExecutorService executor;
+	private boolean onPlay = false;
 	private JButton importVideo;
 	private JButton play;
 	private JButton pause;
 	private JButton stop;
 	static PlaySound playSound;
 	static Thread thread;
-	private boolean threadIsAlive = false;
 
 	public static void main(String[] args) {
 		ren = new PlayVideo();
-		
 		thread = (new Thread(){
     		public void run(){
       			startSound();
     		}
 		});
-		
-		ren.runApp();
+		ren.showImgs();
 	}
 
-	public void runApp (){
+	public void showImgs(){
 		BufferedImage original, result;
 
 		// Use labels to display the images
@@ -91,15 +93,15 @@ public class PlayVideo {
 		
 		String 
 		*/
-
+		
 		importVideo = new JButton("Import Video");
 		importVideo.setSize(40, 40);
 		importVideo.setVisible(true);
 		importVideo.addActionListener(new ActionListener() {
 		    @Override
 		    public void actionPerformed(ActionEvent e) {
+		    	if (folderName != null) resetFrame();
 		        openFile();
-		        if (folderName != null) resetFrame();
 		    }
 		});
 		c.fill = GridBagConstraints.HORIZONTAL;
@@ -154,7 +156,11 @@ public class PlayVideo {
 
 		try {
 			File image = new File("base.png");
+			//System.out.println("Working Directory = " +
+		             // System.getProperty("user.dir"));
+			//System.out.println(image.getPath());
 			BufferedImage img = ImageIO.read(image);
+			//System.out.println("OK2");
 			lbIm1 = new JLabel(new ImageIcon(img));
 			c.fill = GridBagConstraints.HORIZONTAL;
 			c.gridx = 0;
@@ -162,45 +168,12 @@ public class PlayVideo {
 			frame.getContentPane().add(lbIm1, c);
 		} catch (Exception e) {}
 
-		frameNumLbl = new JLabel("Playing Frame " + Integer.toString(frameNumber));
-		c.fill = GridBagConstraints.HORIZONTAL;
-		c.gridx = 0;
-		c.gridy = 2;
-		frame.getContentPane().add(frameNumLbl, c);
-
 		frame.pack();
 		frame.setVisible(true);
 	}
 
 	private void resetFrame () {
-		frameNumber = 0;
 		frame.getContentPane().remove(lbIm1);
-		frame.getContentPane().remove(frameNumLbl);
-	    String filename = folderName.substring(folderName.lastIndexOf("/") + 1) + String.format("%04d", frameNumber+1) + ".rgb";
-		processImgFile(new File(folderName + "/" + filename));
-
-	    BufferedImage img = processImgFile(new File(folderName + "/" + filename));
-		lbIm1 = new JLabel(new ImageIcon(img))/* {
-			@Override
-			public void paintComponent(Graphics g){
-				super.paintComponent(g);
-				g.drawRect(10, 10, 100, 100);
-			}
-		}*/;
-
-		c.gridx = 0;
-		c.gridy = 1;
-		frame.getContentPane().add(lbIm1, c);
-
-		frameNumLbl = new JLabel("Playing Frame " + Integer.toString(frameNumber));
-		c.fill = GridBagConstraints.HORIZONTAL;
-		c.gridx = 0;
-		c.gridy = 2;
-		frame.getContentPane().add(frameNumLbl, c);
-
-		frame.pack();
-		frame.setVisible(true);
-		frame.repaint();
 	}
 
 	private void openFile () {
@@ -213,9 +186,10 @@ public class PlayVideo {
 		    folderChooser.setAcceptAllFileFilterUsed(false);
 
 		    if (folderChooser.showOpenDialog(frame) == JFileChooser.APPROVE_OPTION) {
+		    	frameNumber = 0;
 		    	play.setEnabled(true);
 		    	folderName = folderChooser.getSelectedFile().getAbsolutePath();
-		    	String soundFilename = folderName + "/" + folderName.substring(folderName.lastIndexOf("/") + 1) + ".wav";
+		    	String soundFilename = folderName + "\\" + folderName.substring(folderName.lastIndexOf("\\") + 1) + ".wav";
 
 				FileInputStream inputStream;
 				inputStream = new FileInputStream(soundFilename);
@@ -229,49 +203,207 @@ public class PlayVideo {
 		}
     }
 
+    private void pauseVideo () {
+    	executor.shutdown();
+    	importVideo.setEnabled(true);
+    	play.setEnabled(true);
+    	pause.setEnabled(false);
+    	stop.setEnabled(false);
+    	try {
+    		//thread.wait();
+    		//Thread.sleep(4000);
+    		playSound.stop();
+    	} catch(Exception e) {}
+    }
+
+    private void stopVideo () {
+    	executor.shutdown();
+    	frameNumber = 0;
+    	importVideo.setEnabled(true);
+    	play.setEnabled(true);
+    	pause.setEnabled(false);
+    	stop.setEnabled(false);
+    }
+
 	private void runVideo () {
 		importVideo.setEnabled(false);
 		play.setEnabled(false);
 		pause.setEnabled(true);
 		stop.setEnabled(true);
 		
-		if (threadIsAlive) startSound();
-		else {
-			thread.start();
-			threadIsAlive = true;
-		}
+		//Access the JSON file 
+		JSONParser jsonParser = new JSONParser();
+		JSONArray jsonArray = new JSONArray();
 
+		Object obj = new Object();
+		
+		//System.out.println("Entering try of JSON file!!");
+		//System.out.println(folderName.substring(folderName.lastIndexOf("\\") + 1) + ".json");
+		
+		try{
+			obj = jsonParser.parse(new FileReader(folderName + "\\" + folderName.substring(folderName.lastIndexOf("\\") + 1) + ".json"));
+			System.out.println("Successfully loaded the JSON file");
+			jsonArray = (JSONArray) obj;			
+		}
+		catch (Exception e) {}
+		
+		//System.out.println("Done with try catch of JSON file!!");
+		
+		//JSON FILE DATA in 2D array
+		ArrayList<ArrayList<String>> jsonData = new ArrayList<ArrayList<String>>();
+		
+		
+		if (jsonArray != null){
+			Iterator it = jsonArray.iterator();
+			while(it.hasNext()){
+					JSONObject jsonObject = (JSONObject) it.next();
+					Iterator dataIterator = jsonObject.entrySet().iterator();
+					for(Iterator iterator = jsonObject.keySet().iterator(); iterator.hasNext();) {
+						
+						ArrayList<String> interData = new ArrayList<String>();
+						Object jsonobj = iterator.next();
+						String key = (String) jsonobj;
+						interData.add(key);
+						//linkNames.add(key);
+						//System.out.println("Link name: " + key);
+						
+						String data = dataIterator.next().toString();
+						//System.out.println("Data: "+data);
+						
+						//ArrayList<String> temp = data.split("=");
+						String[] temp = data.split("=");
+						//System.out.println("Temp[1] before split: "+ temp[1]);
+						String[] splitdata = temp[1].split(",");
+						//System.out.println("Splitdata: "+ splitdata);
+						
+						
+						for(int i=0; i<splitdata.length; ++i) {
+							String[] temp1 = splitdata[i].split(":");
+							//System.out.println(temp1[0] + " -- " + temp1[1]);
+							interData.add(temp1[1]);
+						}
+						
+						jsonData.add(interData);
+					}
+			}
+			
+			
+		}
+		
+	
+		/*
+		System.out.println("Printing data stored in array");
+		//Just Checking if data has been stored properly
+		for(int i=0; i<jsonData.size(); ++i) {
+			for(int j=0; j < jsonData.get(i).size() ; ++j) {
+				System.out.println(jsonData.get(i).get(j));
+				
+			}
+			System.out.println("Next Iteration");
+			
+		}
+		*/
+		
+		thread.start();
+		
+		
+		
 		executor = Executors.newScheduledThreadPool(1);
 		Runnable runnable1 = new Runnable() {
 		    public void run() {
 		    	try {
+		    		System.out.println(frameNumber);
+			    	//frame.getContentPane().removeAll();
+			    	//if (frameNumber != 0) frame.getContentPane().remove(lbIm1);
 			    	frame.getContentPane().remove(lbIm1);
-			    	frame.getContentPane().remove(frameNumLbl);
-	        		String filename = folderName.substring(folderName.lastIndexOf("/") + 1) + String.format("%04d", frameNumber+1) + ".rgb";
-					processImgFile(new File(folderName + "/" + filename));
+			    	//System.out.println("Hi");
+	        		String filename = folderName.substring(folderName.lastIndexOf("\\") + 1) + String.format("%04d", frameNumber+1) + ".rgb";
+					//System.out.println("Hi");
+	        		//processImgFile(new File(folderName + "\\" + filename));
 
-	        		BufferedImage img = processImgFile(new File(folderName + "/" + filename));
-					lbIm1 = new JLabel(new ImageIcon(img))/* {
-							@Override
-							public void paintComponent(Graphics g){
-								super.paintComponent(g);
-								g.drawRect(10, 10, 100, 100);
-							}
-					}*/;
+	        		BufferedImage img = processImgFile(new File(folderName + "\\" + filename));
+	        		
+	        		boolean BBpresent = false;
+	        		BBoxindex = new ArrayList<Integer>();
+	        		for(int i=0; i < jsonData.size(); ++i) {
+	        			//String start = jsonData.get(i).get(7).substring(12, 16);
+	        			int start = Integer.parseInt(jsonData.get(i).get(7).substring(12, 16));
+	        			//String end = jsonData.get(i).get(5).substring(12,  16);
+	        			int end = Integer.parseInt(jsonData.get(i).get(5).substring(12, 16));
+	        			
+	        			//System.out.println("Start: "+start+"-- End:" +end);
+	        			if(frameNumber >= start && frameNumber <= end) {
+	        				//System.out.println("BB PRESENT!!!");
+	        				BBpresent = true;
+	        				BBoxindex.add(i);
+	        			}
+	        		}
+	        		
+	        		if(BBpresent) {
+	        			//System.out.println("PRINTING BOUNDING BOX!!!");
+	        			lbIm1 = new JLabel(new ImageIcon(img)) {
+								@Override
+								public void paintComponent(Graphics g){
+									super.paintComponent(g);
+									
+									for(int i=0; i< BBoxindex.size(); ++i) {
+										int x = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(2).substring(0, jsonData.get(BBoxindex.get(i)).get(2).length() - 2 ));
+										int y = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(3).substring(0, jsonData.get(BBoxindex.get(i)).get(3).length() - 2 ));
+										int w = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(6).substring(0, jsonData.get(BBoxindex.get(i)).get(6).length() - 2 ));
+										int h = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(4).substring(0, jsonData.get(BBoxindex.get(i)).get(4).length() - 2 ));
+										//System.out.println("X: "+x+" Y: "+y+" W: "+w+" H: "+h);
+										g.drawRect(x, y, w, h);
+									}
+									
+								}
+						};
+	        		}
+	        		else
+	        		{
+	        			lbIm1 = new JLabel(new ImageIcon(img));;
+	        		}
 
+					//lbIm1.setLayout(new BorderLayout());
+					//c.fill = GridBagConstraints.HORIZONTAL;
 					c.gridx = 0;
 					c.gridy = 1;
-					frame.getContentPane().add(lbIm1, c);
-
-					frameNumLbl = new JLabel("Playing Frame " + Integer.toString(frameNumber));
-					c.fill = GridBagConstraints.HORIZONTAL;
-					c.gridx = 0;
-					c.gridy = 2;
-					frame.getContentPane().add(frameNumLbl, c);
+					frame.getContentPane().add(lbIm1, c);	
 
 					frame.pack();
 					frame.setVisible(true);
 					frame.repaint();
+					
+					//Retrieve mouse click coordinates
+					//mclick = false;
+					//mX = -1;
+					//mY = -1;
+					lbIm1.addMouseListener(new MouseAdapter() {
+						@Override 
+						public void mousePressed(MouseEvent e) {
+							mX = e.getX(); 
+							mY = e.getY();
+							//mclick = true;
+							System.out.println(mX + " , " + mY);
+						}
+					});
+					//System.out.println("Follow up: " +x + "-" + y);
+					
+					
+					//Run through all bounding box values and check if x,y inside any bounding box
+					
+					//System.out.println("RECORDED CLICK!!");
+					for(int i=0; i<BBoxindex.size(); ++i) {
+						int BBx = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(2).substring(0, jsonData.get(BBoxindex.get(i)).get(2).length() - 2 ));
+						int BBy = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(3).substring(0, jsonData.get(BBoxindex.get(i)).get(3).length() - 2 ));
+						int BBw = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(6).substring(0, jsonData.get(BBoxindex.get(i)).get(6).length() - 2 ));
+						int BBh = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(4).substring(0, jsonData.get(BBoxindex.get(i)).get(4).length() - 2 )); 
+						if( BBx < mX && BBy < mY && (BBx + BBw) > mX && (BBy + BBh) > mY){
+							System.out.println("Play secondary video NOW: "+jsonData.get(BBoxindex.get(i)).get(1));
+						}
+					}	
+						
+					
+					
 					frameNumber++;
 
 					if (frameNumber == 9000) executor.shutdown();
@@ -284,9 +416,13 @@ public class PlayVideo {
 		//executor.shutdown();
 	}
 
+	
 	static void startSound () {
 		try {
 			playSound.play();
+		} catch (PlayWaveException e) {
+			e.printStackTrace();
+			return;
 		} catch (Exception e) {}
 	}
 
@@ -321,36 +457,4 @@ public class PlayVideo {
 
 		return img;
 	}
-
-	private void pauseVideo () {
-    	executor.shutdown();
-
-    	importVideo.setEnabled(true);
-    	play.setEnabled(true);
-    	pause.setEnabled(false);
-    	stop.setEnabled(false);
-
-    	try {
-    		playSound.pause();
-    	} catch(Exception e) {}
-    }
-
-    private void stopVideo () {
-    	//resetFrame();
-
-    	executor.shutdown();
-
-    	importVideo.setEnabled(true);
-    	play.setEnabled(true);
-    	pause.setEnabled(false);
-    	stop.setEnabled(false);
-
-    	//resetFrame();
-    	frameNumber = 0;
-
-    	try {
-	    	playSound.stop();
-	    	playSound.initSoundFile();
-	    } catch (Exception e) {}
-    }
 }
