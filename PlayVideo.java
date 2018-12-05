@@ -54,6 +54,13 @@ public class PlayVideo {
 	static Thread thread;
 	private boolean threadIsAlive = false;
 
+	private ArrayList<Integer> BBoxindex;
+	private int mX;
+	private int mY;
+	private boolean mclick;
+	private boolean onPlay = false;
+
+
 	public static void main(String[] args) {
 		ren = new PlayVideo();
 		
@@ -241,23 +248,115 @@ public class PlayVideo {
 			threadIsAlive = true;
 		}
 
+		// Access the JSON file ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+		JSONParser jsonParser = new JSONParser();
+		JSONArray jsonArray = new JSONArray();
+
+		Object obj = new Object();
+		
+		try{
+			obj = jsonParser.parse(new FileReader(folderName + "\\" + folderName.substring(folderName.lastIndexOf("\\") + 1) + ".json"));
+			System.out.println("Successfully loaded the JSON file");
+			jsonArray = (JSONArray) obj;			
+		}
+		catch (Exception e) {}
+		
+		//JSON FILE DATA in 2D array
+		ArrayList<ArrayList<String>> jsonData = new ArrayList<ArrayList<String>>();
+		
+		
+		if (jsonArray != null){
+			Iterator it = jsonArray.iterator();
+			while(it.hasNext()){
+					JSONObject jsonObject = (JSONObject) it.next();
+					Iterator dataIterator = jsonObject.entrySet().iterator();
+					for(Iterator iterator = jsonObject.keySet().iterator(); iterator.hasNext();) {
+						
+						ArrayList<String> interData = new ArrayList<String>();
+						Object jsonobj = iterator.next();
+						String key = (String) jsonobj;
+						interData.add(key);
+						//linkNames.add(key);
+						//System.out.println("Link name: " + key);
+						
+						String data = dataIterator.next().toString();
+						//System.out.println("Data: "+data);
+						
+						//ArrayList<String> temp = data.split("=");
+						String[] temp = data.split("=");
+						//System.out.println("Temp[1] before split: "+ temp[1]);
+						String[] splitdata = temp[1].split(",");
+						//System.out.println("Splitdata: "+ splitdata);
+						
+						
+						for(int i=0; i<splitdata.length; ++i) {
+							String[] temp1 = splitdata[i].split(":");
+							//System.out.println(temp1[0] + " -- " + temp1[1]);
+							interData.add(temp1[1]);
+						}
+						
+						jsonData.add(interData);
+					}
+			}
+		}
+		///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 		executor = Executors.newScheduledThreadPool(1);
 		Runnable runnable1 = new Runnable() {
 		    public void run() {
 		    	try {
 			    	frame.getContentPane().remove(lbIm1);
 			    	frame.getContentPane().remove(frameNumLbl);
+	        		
 	        		String filename = folderName.substring(folderName.lastIndexOf("/") + 1) + String.format("%04d", frameNumber+1) + ".rgb";
-					processImgFile(new File(folderName + "/" + filename));
+					//processImgFile(new File(folderName + "/" + filename));
 
 	        		BufferedImage img = processImgFile(new File(folderName + "/" + filename));
-					lbIm1 = new JLabel(new ImageIcon(img))/* {
-							@Override
-							public void paintComponent(Graphics g){
-								super.paintComponent(g);
-								g.drawRect(10, 10, 100, 100);
-							}
-					}*/;
+					/* FROM YUKA'S PROGRAM
+					lbIm1 = new JLabel(new ImageIcon(img));
+					*/
+
+					//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+					boolean BBpresent = false;
+	        		BBoxindex = new ArrayList<Integer>();
+	        		for(int i=0; i < jsonData.size(); ++i) {
+	        			//String start = jsonData.get(i).get(7).substring(12, 16);
+	        			int start = Integer.parseInt(jsonData.get(i).get(7).substring(12, 16));
+	        			//String end = jsonData.get(i).get(5).substring(12,  16);
+	        			int end = Integer.parseInt(jsonData.get(i).get(5).substring(12, 16));
+	        			
+	        			//System.out.println("Start: "+start+"-- End:" +end);
+	        			if(frameNumber >= start && frameNumber <= end) {
+	        				//System.out.println("BB PRESENT!!!");
+	        				BBpresent = true;
+	        				BBoxindex.add(i);
+	        			}
+	        		}
+	        		
+	        		if(BBpresent) {
+	        			//System.out.println("PRINTING BOUNDING BOX!!!");
+	        			lbIm1 = new JLabel(new ImageIcon(img)) {
+								@Override
+								public void paintComponent(Graphics g){
+									super.paintComponent(g);
+									
+									for(int i=0; i< BBoxindex.size(); ++i) {
+										int x = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(2).substring(0, jsonData.get(BBoxindex.get(i)).get(2).length() - 2 ));
+										int y = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(3).substring(0, jsonData.get(BBoxindex.get(i)).get(3).length() - 2 ));
+										int w = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(6).substring(0, jsonData.get(BBoxindex.get(i)).get(6).length() - 2 ));
+										int h = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(4).substring(0, jsonData.get(BBoxindex.get(i)).get(4).length() - 2 ));
+										//System.out.println("X: "+x+" Y: "+y+" W: "+w+" H: "+h);
+										g.drawRect(x, y, w, h);
+									}
+									
+								}
+						};
+	        		} else {
+	        			lbIm1 = new JLabel(new ImageIcon(img));;
+	        		}
+
+					//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 					c.gridx = 0;
 					c.gridy = 1;
@@ -273,6 +372,34 @@ public class PlayVideo {
 					frame.setVisible(true);
 					frame.repaint();
 					frameNumber++;
+
+					////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+					//Retrieve mouse click coordinates
+
+					lbIm1.addMouseListener(new MouseAdapter() {
+						@Override 
+						public void mousePressed(MouseEvent e) {
+							mX = e.getX(); 
+							mY = e.getY();
+							//mclick = true;
+							System.out.println(mX + " , " + mY);
+						}
+					});
+
+					//Run through all bounding box values and check if x,y inside any bounding box
+
+					for(int i=0; i<BBoxindex.size(); ++i) {
+						int BBx = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(2).substring(0, jsonData.get(BBoxindex.get(i)).get(2).length() - 2 ));
+						int BBy = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(3).substring(0, jsonData.get(BBoxindex.get(i)).get(3).length() - 2 ));
+						int BBw = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(6).substring(0, jsonData.get(BBoxindex.get(i)).get(6).length() - 2 ));
+						int BBh = Integer.parseInt(jsonData.get(BBoxindex.get(i)).get(4).substring(0, jsonData.get(BBoxindex.get(i)).get(4).length() - 2 )); 
+						if( BBx < mX && BBy < mY && (BBx + BBw) > mX && (BBy + BBh) > mY){
+							System.out.println("Play secondary video NOW: "+jsonData.get(BBoxindex.get(i)).get(1));
+						}
+					}
+
+					////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 					if (frameNumber == 9000) executor.shutdown();
 				} catch (ArrayIndexOutOfBoundsException e) {}
